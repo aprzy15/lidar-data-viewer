@@ -24,3 +24,4 @@ pnpm-debug.log*
 __pycache__
 *egg-info
 *pyc
+/data/Somerville_s22000.npy
