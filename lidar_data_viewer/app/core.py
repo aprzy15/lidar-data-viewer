@@ -4,7 +4,7 @@ Define your classes and create the instances that you need to expose
 import logging
 from trame.app import get_server
 from trame.ui.vuetify import SinglePageLayout, SinglePageWithDrawerLayout
-from trame.widgets import vuetify, vtk, html
+from trame.widgets import vuetify, vtk, html, router, trame
 from vtk_generation import get_vtk_obj, get_vtk_obj_pv
 import numpy as np
 import os
