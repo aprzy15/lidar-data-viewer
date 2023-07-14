@@ -2,7 +2,7 @@ import numpy as np
 # import cv2
 import vtk.util.numpy_support as numpy_support
 import vtk
-
+import pyvista
 
 def numpyToVTK(data, name):
     data_type = vtk.VTK_FLOAT
@@ -69,3 +69,7 @@ def get_vtk_obj(
     alg.Update()
 
     return alg.GetOutput()
+
+def get_vtk_obj_pv():
+    sphere = pyvista.Sphere(radius=0.65, center=(0, 0, 0))
+    return sphere
