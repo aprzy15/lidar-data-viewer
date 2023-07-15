@@ -4,7 +4,8 @@ Define your classes and create the instances that you need to expose
 import logging
 from trame.app import get_server
 from trame.ui.vuetify import SinglePageLayout, SinglePageWithDrawerLayout
-from trame.widgets import vuetify, vtk, html, router, trame
+from trame.ui.router import RouterViewLayout
+from trame.widgets import vuetify, vtk, html, router, trame, grid
 from vtk_generation import get_vtk_obj, get_vtk_obj_pv
 import numpy as np
 import os
@@ -350,7 +351,7 @@ class Engine:
     def ui(self, *args, **kwargs):
         with SinglePageWithDrawerLayout(self._server) as layout:
             layout.title.set_text("Lidar Viewer")
-            # Top toolbar
+            trame.LifeCycleMonitor(name="Root", events="['created', 'destroyed']")
             with layout.toolbar:
                 vuetify.VSpacer()
                 vuetify.VDivider(vertical=True, classes="mx-2")
@@ -494,21 +495,36 @@ class Engine:
                 # html.Div("image_height={{image_height}} image_width={{image_width}}")
                 with vuetify.VContainer(
                         fluid=True,
-                        classes="pa-0 fill-height",
+                        classes="red lighten fill-height",
                 ):
-                    # view = vtk.VtkRemoteView(self.renderWindow, interactive_ratio=1)
-                    view = PyVistaRemoteView(self.plot_window)
+                    router.RouterView()
 
-                    # view = vtk.VtkLocalView(self.renderWindow)
-                    # view = vtk.VtkRemoteLocalView(
-                    #     renderWindow, namespace="view", mode="local", interactive_ratio=1
-                    # )
-                    self.ctrl.view_update = view.update
-                    self.ctrl.view_reset_camera = view.reset_camera
-                html.Div("image_height={{image_height}} image_width={{image_width}}")
+        with RouterViewLayout(self._server, "/", classes="blue lighten fill-height", fluid=True):
+            print('LAYOUT')
+            trame.LifeCycleMonitor(name="vtk", events="['created', 'destroyed']")
+
+            view = PyVistaRemoteView(self.plot_window)
+            view.update()
+            self.ctrl.view_update.add(view.update)
+
+            # self.ctrl.view_update = view.update
+            # self.ctrl.view_reset_camera = view.reset_camera
+
+        with RouterViewLayout(self._server, "/home"):
+            trame.LifeCycleMonitor(name="Home", events="['created', 'destroyed']")
+            with vuetify.VCard():
+                vuetify.VCardTitle("This is home")
+            vuetify.VBtn(
+                "VTk",
+                outlined=False,
+                color='primary',
+                # click=self.update_pipeline,
+                to='/'
+            )
 
 
 
+# html.Div("image_height={{image_height}} image_width={{image_width}}")
 def create_engine(server=None):
     # Get or create server
     if server is None:
