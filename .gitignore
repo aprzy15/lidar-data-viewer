@@ -31,3 +31,5 @@ lidar_data_viewer/state_update_test.py
 lidar_data_viewer/test_router.py
 lidar_data_viewer/app/viz_test.py
 lidar_data_viewer/app/viz_test.py
+*.vtp
+*.vtu

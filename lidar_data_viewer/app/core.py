@@ -41,6 +41,12 @@ class LookupTable:
     jet = 3
 
 
+def force_type(var, dtype):
+    try:
+        self.lock_aspect = bool(lock_aspect)
+    except ValueError as err:
+        pass
+
 
 # ---------------------------------------------------------
 # Engine class
@@ -48,6 +54,10 @@ class LookupTable:
 
 class Engine:
     def __init__(self, server=None):
+        self.boundary_edge_actors = {}
+        self.points_actors = None
+        self.aspect_ratio = None
+        self.inp_mesh = None
         if server is None:
             server = get_server()
 
@@ -65,8 +75,17 @@ class Engine:
         self.base_thickness = 20
         self.building_warp = 1
         self.clip_border = True
+        # self.show_boundaries = True
+        # self.show_labels = True
         self.lock_aspect = True
         self.actor = None
+        self.scale = 20000
+        self.towns = [
+            {"text": "Somerville", "value": 'Somerville'},
+            {"text": "Cambridge", "value": 'Cambridge'},
+            {"text": "Medford", "value": 'Medford'},
+        ]
+        state.active_mesh = self.towns[0]['value']
         self.colormaps = [
             {"text": "Terrain", "value": 'terrain'},
             {"text": "Cool Warm", "value": 'coolwarm'},
@@ -89,12 +108,11 @@ class Engine:
         ]
         self.active_file_format = self.file_formats[0]['value']
 
-
         state.change("image_width")(self.update_image_width)
         state.change("image_width")(self.update_image_width)
-
         state.change("file_format")(self.update_file_format)
         state.change("colormap")(self.update_colormap)
+        state.change("active_town")(self.update_map)
         state.change("plot_array")(self.update_plot_array)
         state.change("lock_aspect")(self.update_lock_aspect)
         state.change("z_land_exaggeration")(self.update_z_multiplier)
@@ -103,42 +121,25 @@ class Engine:
         state.change("base_thickness")(self.update_base_thickness)
         state.change("building_warp")(self.update_building_warp)
         state.change("clip_border")(self.update_clip_border)
-        state.change("apply_button")(self.update_pipeline)
+        state.change("apply_button")(self.update_active_mesh)
+        state.change("show_labels")(self.update_show_labels)
+        state.change("show_boundaries")(self.update_show_boundaries)
         ctrl.trigger('download_data')(self.download_data)
 
-
         # Load data
+        current_directory = os.path.abspath(os.path.dirname(__file__))
+        parent_folder = os.path.dirname(os.path.dirname(current_directory))
         self.plot_window = pyvista.Plotter()
         self.plot_window.set_background('black')
-
-
-        CURRENT_DIRECTORY = os.path.abspath(os.path.dirname(__file__))
-        filepath = os.path.join(os.path.dirname(os.path.dirname(CURRENT_DIRECTORY)), r"data\Somerville_s22000_grid.vti")
-        self.inp_mesh = pyvista.read(filepath)
-        self.state.image_height, self.state.image_width, _ = self.inp_mesh.dimensions
-        self.aspect_ratio = self.state.image_height / self.state.image_width
-        self.update_pipeline()
-        # self.plot_window.remove_scalar_bar()
-        # self.plot_window.enable_mesh_picking(callback=self.click_mesh, show=True, left_clicking=True, style='surface')
-        # Bind instance methods to controller
-        # ctrl.reset_resolution = self.reset_resolution
+        self.data_folder = os.path.join(parent_folder, "data")
+        self.boundary_actors = {}
+        self.load_boundary_meshes()
+        self.update_active_mesh()
         ctrl.on_server_reload = self.ui
 
         # Bind instance methods to state change
         state.setdefault("active_ui", None)
         state.active_ui = 'default'
-
-        # TODO show low poly boundary outline meshes for different towns at once
-        # TODO Cast map texture to boundary mesh
-        # TODO update vtk processing to start with two vti files. one for interior boundary and one for exterior boundary,
-        #  warp both by scalars multiple times to get final mesh
-        # TODO Dimensions options
-
-        # TODO show axis grid option
-        # TODO model view parameters (color map, mesh style)
-
-        # TODO export as STL
-        # TODO export as image stack
 
         # Generate UI
         self.ui()
@@ -156,6 +157,88 @@ class Engine:
     @property
     def ctrl(self):
         return self.server.controller
+
+    def update_map(self, active_town, **kwargs):
+        self.state.active_mesh = active_town
+
+    def load_boundary_meshes(self, **kwargs):
+        # active_town = self.state.active_mesh
+        centroids = []
+        offsets = []
+        towns = []
+        for d in self.towns:
+            town = d['value']
+            towns.append(town)
+            fname = f"{town}_mesh_boundary.vtp"
+            filepath = os.path.join(self.data_folder, fname)
+            boundary_mesh = pyvista.read(filepath)
+            self.boundary_actors[town] = self.plot_window.add_mesh(boundary_mesh, show_edges=False, color='white')
+            boundary_mesh.field_data.get('centroid')[0].split(',')
+            edges = boundary_mesh.extract_feature_edges(30)
+            self.boundary_edge_actors[town] = self.plot_window.add_mesh(edges, color="black", line_width=5)
+
+            # Point labels
+            offset = boundary_mesh.field_data.get('origin_offset')[0].split(',')
+            offset = [float(val) for val in offset]
+            centroid = boundary_mesh.field_data.get('centroid')[0].split(',')
+            centroid = [float(val) for val in centroid]
+            centroids.append([centroid[0]+offset[0], centroid[1]+offset[1], 0])
+
+        point_labels = pyvista.PolyData(np.array(centroids))
+        point_labels["labels"] = [f"{town}" for town in towns]
+        self.points_actors = self.plot_window.add_point_labels(
+            point_labels,
+            "labels",
+            point_size=10,
+            font_size=12,
+            shape_color='white',
+            show_points=False
+        )
+
+    def update_active_mesh(self, **kwargs):
+        active_town = self.state.active_mesh
+        fname = f"{active_town}_s{self.scale}.vti"
+        print(f'Loading file: {fname}')
+        filepath = os.path.join(self.data_folder, fname)
+        self.inp_mesh = pyvista.read(filepath)
+        self.state.image_height, self.state.image_width, _ = self.inp_mesh.dimensions
+        self.aspect_ratio = self.state.image_height / self.state.image_width
+
+        print(f'z_land_exaggeration: {self.z_land_exaggeration}')
+        print(f'water_recess_layers: {self.water_emboss_layers}')
+        print(f'road_emboss_layers: {self.road_emboss_layers}')
+        print(f'base_thickness: {self.base_thickness}')
+        print(f'clip_border: {self.clip_border}')
+        print(self.inp_mesh.spacing)
+        print('-----------------------------------------------')
+
+        self.state.ui_width, self.state.ui_height = self.get_disp_image_dim()
+        grid = pyvista.create_grid(self.inp_mesh.copy(), dimensions=(self.state.ui_height, self.state.ui_width, 1))
+        mesh = grid.sample(self.inp_mesh.copy())
+
+        land_warp = mesh.warp_by_scalar('land_map', factor=self.z_land_exaggeration)
+        water_warp = land_warp.warp_by_scalar('water_mask', factor=self.water_emboss_layers)
+        road_warp = water_warp.warp_by_scalar('road_mask', factor=self.road_emboss_layers)
+        final_mesh = road_warp.warp_by_scalar('building_height', factor=1 * self.building_warp)
+        if self.clip_border:
+            final_mesh = final_mesh.threshold(0.5, scalars='boundary_mask')
+
+        if self.water_emboss_layers < 0:
+            transform_matrix = np.array(
+                [
+                    [1, 0, 0, 0],
+                    [0, 1, 0, 0],
+                    [0, 0, 1, self.water_emboss_layers * -1],
+                    [0, 0, 0, 1],
+                ]
+            )
+            final_mesh = final_mesh.transform(transform_matrix)
+
+        final_mesh.point_data['elevation'] = final_mesh.point_data['land_map'] + final_mesh.point_data['building_height'] + final_mesh.point_data['road_mask']
+        if self.actor is not None:
+            self.plot_window.remove_actor(self.actor)
+        self.actor = self.plot_window.add_mesh(final_mesh, show_edges=False, scalars=self.active_array, cmap=self.active_cmap)
+        self.plot_window.remove_scalar_bar()
 
 
     def show_in_jupyter(self, **kwargs):
@@ -213,7 +296,7 @@ class Engine:
         try:
             self.lock_aspect = bool(lock_aspect)
         except ValueError as err:
-            return
+            pass
 
     def update_z_multiplier(self, z_land_exaggeration, **kwargs):
         print('-----------------------------------')
@@ -250,7 +333,24 @@ class Engine:
         try:
             self.clip_border = bool(clip_border)
         except ValueError as err:
-            return
+            pass
+
+    def update_show_labels(self, show_labels, **kwargs):
+        if show_labels:
+            self.points_actors.VisibilityOn()
+        else:
+            self.points_actors.VisibilityOff()
+        self.ctrl.view_update()
+
+    def update_show_boundaries(self, show_boundaries, **kwargs):
+        for key in self.boundary_actors:
+            if show_boundaries:
+                self.boundary_actors[key].VisibilityOn()
+                self.boundary_edge_actors[key].VisibilityOn()
+            else:
+                self.boundary_actors[key].VisibilityOff()
+                self.boundary_edge_actors[key].VisibilityOff()
+        self.ctrl.view_update()
 
     def get_disp_image_dim(self):
         max_size = 2000
@@ -273,37 +373,8 @@ class Engine:
                 width = int(np.round(height / self.aspect_ratio))
         return width, height
 
-    def update_pipeline(self, **kwargs):
-        print(f'z_land_exaggeration: {self.z_land_exaggeration}')
-        print(f'water_recess_layers: {self.water_emboss_layers}')
-        print(f'road_emboss_layers: {self.road_emboss_layers}')
-        print(f'base_thickness: {self.base_thickness}')
-        print(f'clip_border: {self.clip_border}')
-        print(self.inp_mesh.spacing)
-        print('-----------------------------------------------')
-
-        self.state.ui_width, self.state.ui_height = self.get_disp_image_dim()
-        # TODO add vi
-        # TODO add bbox selector
-        # TODO add readout for visualization resolution reduction
-        grid = pyvista.create_grid(self.inp_mesh.copy(), dimensions=(self.state.ui_height, self.state.ui_width, 1))
-        mesh = grid.sample(self.inp_mesh.copy())
-
-        land_warp = mesh.warp_by_scalar('land_map', factor=self.z_land_exaggeration)
-        water_warp = land_warp.warp_by_scalar('water_mask', factor=self.water_emboss_layers)
-        road_warp = water_warp.warp_by_scalar('road_mask', factor=self.road_emboss_layers)
-        final_mesh = road_warp.warp_by_scalar('building_height', factor=1 * self.building_warp)
-        if self.clip_border:
-            final_mesh = final_mesh.threshold(0.5, scalars='boundary_mask')
-
-        final_mesh.point_data['elevation'] = final_mesh.point_data['land_map'] + final_mesh.point_data['building_height'] + final_mesh.point_data['road_mask']
-        if self.actor is not None:
-            self.plot_window.remove_actor(self.actor)
-        self.actor = self.plot_window.add_mesh(final_mesh, show_edges=False, scalars=self.active_array, cmap=self.active_cmap)
-        self.plot_window.remove_scalar_bar()
 
     def download_data(self):
-        # TODO units selector
         file_format = self.active_file_format
         print(f'downloading file {file_format}')
         dim = (int(self.state['image_height']), int(self.state['image_width']), 1)
@@ -312,12 +383,14 @@ class Engine:
             mesh = grid.sample(self.inp_mesh.copy())
         else:
             mesh = self.inp_mesh.copy()
-        dim = (mesh.dimensions[0] - 1, mesh.dimensions[1] - 1)
+        dim = (mesh.dimensions[0], mesh.dimensions[1])
 
         d = {}
         for name in mesh.array_names:
-            mesh.get_array(name)
-            array = np.array(mesh.get_array(name)).reshape(dim, order='F')
+            array = mesh.get_array(name)
+            if not dim[0] * dim[1] == len(array):
+                continue
+            array = np.array(array).reshape(dim, order='F')
             d[name] = array
 
         # from matplotlib import pyplot as plt
@@ -341,7 +414,6 @@ class Engine:
         im.save(img_byte_arr, format='PNG')
         opt = self.server.protocol.addAttachment(img_byte_arr.getvalue())
         return opt
-
 
     # --------------------------------------
     # UI
@@ -379,6 +451,19 @@ class Engine:
             with layout.drawer as drawer:
                 drawer.width = 325
                 with ui_card(title="Model Parameters"):
+                    vuetify.VSelect(
+                        # Color Map
+                        label="Map",
+                        v_model=("active_town", self.state.active_mesh),
+                        items=(
+                            "towns",
+                            self.towns,
+                        ),
+                        hide_details=True,
+                        dense=True,
+                        outlined=True,
+                        classes="pt-2",
+                    )
                     with vuetify.VRow(classes="pt-2", dense=True):
                         with vuetify.VCol(cols="6"):
                             vuetify.VTextField(
@@ -434,7 +519,7 @@ class Engine:
                         "Apply",
                         outlined=False,
                         color='primary',
-                        click=self.update_pipeline,
+                        click=self.update_active_mesh,
                     )
 
                 with ui_card(title="View Parameters"):
@@ -465,6 +550,16 @@ class Engine:
                         outlined=True,
                         classes="pt-2",
                     )
+                    vuetify.VCheckbox(
+                        label="Show labels",
+                        v_model=("show_labels", True),
+                        dense=True,
+                    )
+                    vuetify.VCheckbox(
+                        label="Show Boundaries",
+                        v_model=("show_boundaries", True),
+                        dense=True,
+                    )
                 with ui_card(title="Output Parameters"):
                     vuetify.VSelect(
                         # Color Map
@@ -486,7 +581,7 @@ class Engine:
                         outlined=False,
                         left=True,
                         color='primary',
-                        click="utils.download('height_map.png', trigger('download_data'), 'image/png')",
+                        click=f"utils.download('height_map.png', trigger('download_data'), 'image/png')",
                     )
 
             # Main content
