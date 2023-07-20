@@ -1,6 +1,6 @@
 from trame.ui.vuetify import SinglePageWithDrawerLayout
 from trame.widgets import vuetify, html
-from trame.app import get_server
+from trame.app import get_server, asynchronous
 from pyvista.trame import PyVistaRemoteView
 import pyvista
 from PIL import Image
@@ -8,6 +8,9 @@ import numpy as np
 import logging
 import os
 import io
+import asyncio
+import time
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -15,7 +18,9 @@ logger.setLevel(logging.INFO)
 # Engine class
 # ---------------------------------------------------------
 # TODO generate other data sources
-# TODO add loading screen
+# TODO add icon logo
+# TODO categorical color map
+# TODO cut water from mesh boundaries
 
 class Engine:
     def __init__(self, server=None):
@@ -64,7 +69,7 @@ class Engine:
         self.plot_window = pyvista.Plotter()
         self.plot_window.set_background('black')
         self.load_boundary_meshes()
-        self.update_active_mesh()
+        self.update_mesh()
         ctrl.on_server_reload = self.ui
         state.setdefault("active_ui", None)
         state.active_ui = 'default'
@@ -128,7 +133,7 @@ class Engine:
             self.state.image_width = self.state.image_width
             return self.active_mesh_obj
 
-    def update_active_mesh(self, **kwargs):
+    def update_mesh(self):
         # Get vtk mesh object
         active_mesh_obj = self.get_mesh_obj()
         # Rescale display mesh if dimensions are too large
@@ -166,12 +171,21 @@ class Engine:
         )
         self.plot_window.remove_scalar_bar()
 
+    @asynchronous.task
+    async def update_active_mesh(self, **kwargs):
+        with self.state:
+            self.state.loading = True
+        await asyncio.sleep(0.05)  # Give room for server to handle network
+        self.update_mesh()
+        with self.state:
+            self.state.loading = False
+
     def get_disp_image_dim(self):
         try:
             width = int(self.state.image_width)
             height = int(self.state.image_height)
         except ValueError as err:
-            return
+            return 0, 0
         if (width > self.max_image_dim) or (height > self.max_image_dim):
             if width > height:
                 width = 2000
@@ -310,16 +324,7 @@ class Engine:
                     hide_details=True,
                     dense=True,
                 )
-                vuetify.VCheckbox(
-                    v_model=("viewMode", "local"),
-                    on_icon="mdi-lan-disconnect",
-                    off_icon="mdi-lan-connect",
-                    true_value="local",
-                    false_value="remote",
-                    classes="mx-1",
-                    hide_details=True,
-                    dense=True,
-                )
+
                 with vuetify.VBtn(icon=True, click=self.plot_window.reset_camera):
                     vuetify.VIcon("mdi-crop-free")
             # Side screen drawer
@@ -392,6 +397,7 @@ class Engine:
                         outlined=False,
                         color='primary',
                         click=self.update_active_mesh,
+                        loading=('loading', False)
                     )
                 with ui_card(title="View Parameters"):
                     vuetify.VSelect(
@@ -432,7 +438,6 @@ class Engine:
                         items=(
                             "file_formats",
                             {"text": "Height map (.png)", "value": 'png'},
-
                         ),
                         hide_details=True,
                         dense=True,
