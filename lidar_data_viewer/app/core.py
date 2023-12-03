@@ -1,4 +1,4 @@
-from trame.ui.vuetify import SinglePageWithDrawerLayout
+from trame_vuetify.ui.vuetify import SinglePageWithDrawerLayout
 from trame.widgets import vuetify, html
 from trame.app import get_server, asynchronous
 from pyvista.trame import PyVistaRemoteView
@@ -311,7 +311,7 @@ class Engine:
 
     def ui(self, *args, **kwargs):
         with SinglePageWithDrawerLayout(self._server) as layout:
-            layout.title.set_text("Lidar Viewer")
+            layout.title.set_text("3D Map Customizer")
             # Top toolbar
             with layout.toolbar:
                 vuetify.VSpacer()
