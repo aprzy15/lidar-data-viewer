@@ -2,6 +2,8 @@
 
 A web app for customizing 3D printable rasterized maps. The output is a grayscale PNG image where the grayscale value indicates the max layer number.
 
+Built in Python using the Trame platform.
+
 
 ![screenshot_1](https://github.com/aprzy15/lidar-data-viewer/assets/14866378/49dd0b25-e655-4e30-a557-942474cc57f3)
 
