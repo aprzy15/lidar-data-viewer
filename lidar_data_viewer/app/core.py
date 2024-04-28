@@ -274,13 +274,14 @@ class Engine:
     def download_data(self):
         print(f'downloading file {self.state.file_format}')
         # Resize mesh if need be
-        dim = (int(self.state.image_height), int(self.state.image_width), 1)
+        dim = (int(self.state.image_height), int(self.state.image_width))
         if dim != self.active_mesh_obj.dimensions:
-            grid = pyvista.create_grid(self.active_mesh_obj.copy(), dimensions=dim)
+            grid_dim = (dim[0], dim[1], 1)
+            grid = pyvista.create_grid(self.active_mesh_obj.copy(), dimensions=grid_dim)
             mesh = grid.sample(self.active_mesh_obj.copy())
         else:
             mesh = self.active_mesh_obj.copy()
-            dim = (mesh.dimensions[0], mesh.dimensions[1])
+            # dim = (mesh.dimensions[0], mesh.dimensions[1])
         # Convert 1D arrays back to 2D and combine to single height map
         map_arr = (mesh['land_map'].reshape(dim, order='F')) * float(self.state.land_height_mult)
         map_arr += ((mesh['water_mask'].reshape(dim, order='F')) * float(self.state.water_emboss_layers))
