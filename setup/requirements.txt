@@ -1,2 +1,10 @@
 # Use published version instead of local-app from initialize.sh
 # lidar-data-viewer
+trame
+trame-vtk
+trame-vuetify
+setuptools~=58.1.0
+numpy~=1.25.0
+pyvista~=0.40.1
+Pillow~=10.0.0
+vtk~=9.2.6

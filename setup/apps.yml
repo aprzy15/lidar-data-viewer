@@ -1,4 +1,15 @@
-trame: # Default app under /index.html
-  app: lidar-data-viewer
-lidar-data-viewer: # /lidar-data-viewer.html
-  app: lidar-data-viewer
+#trame: # Default app under /index.html
+#  app: lidar-data-viewer
+#lidar-data-viewer: # /lidar-data-viewer.html
+#  app: lidar-data-viewer
+trame:
+  cmd:
+    - python
+    - /lidar_data_viewer/main.py
+    - --host
+    - ${host}
+    - --port
+    - ${port}
+    - --authKey
+    - ${secret}
+    - --server
